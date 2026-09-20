@@ -25,11 +25,17 @@ static bool FindFirstNoul(const TSharedPtr<FJsonValue>& Value, double& OutYesPro
 	if (Value->Type == EJson::Object)
 	{
 		const TSharedPtr<FJsonObject> Object = Value->AsObject();
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
+		const TSharedPtr<UE::JSON::Private::FJsonStringSet> StringSet = Object->GetStringSet();
+		if (!StringSet.IsValid())
 		{
-			if (Pair.Key.Equals(TEXT("noul"), ESearchCase::IgnoreCase))
+			return false;
+		}
+
+		for (const UE::FSharedString& FieldName : *StringSet)
+		{
+			if (FieldName.ToView().Equals(TEXT("noul"), ESearchCase::IgnoreCase))
 			{
-				const TSharedPtr<FJsonValue>& NoulValue = Pair.Value;
+				const TSharedPtr<FJsonValue> NoulValue = Object->TryGetField(FieldName);
 				if (NoulValue.IsValid() && NoulValue->Type == EJson::Number)
 				{
 					const double Candidate = NoulValue->AsNumber();
@@ -40,7 +46,7 @@ static bool FindFirstNoul(const TSharedPtr<FJsonValue>& Value, double& OutYesPro
 					}
 				}
 			}
-			if (FindFirstNoul(Pair.Value, OutYesProbability))
+			if (FindFirstNoul(Object->TryGetField(FieldName), OutYesProbability))
 			{
 				return true;
 			}
@@ -68,19 +74,24 @@ bool FJevParser::ExtractYesProbability(const TSharedRef<FJsonObject>& Root, doub
 	return FindFirstNoul(RootValue, OutYesProbability);
 }
 
-static const TSharedPtr<FJsonValue>* FindCaseInsensitive(const TSharedRef<FJsonObject>& Object, const FString& Key)
+static TSharedPtr<FJsonValue> FindCaseInsensitive(const TSharedRef<FJsonObject>& Object, const FString& Key)
 {
-	const TSharedPtr<FJsonValue>* Found = Object->Values.Find(Key);
-	if (Found)
+	if (TSharedPtr<FJsonValue> Found = Object->TryGetField(Key))
 	{
 		return Found;
 	}
 
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
+	const TSharedPtr<UE::JSON::Private::FJsonStringSet> StringSet = Object->GetStringSet();
+	if (!StringSet.IsValid())
 	{
-		if (Pair.Key.Equals(Key, ESearchCase::IgnoreCase))
+		return nullptr;
+	}
+
+	for (const UE::FSharedString& FieldName : *StringSet)
+	{
+		if (FieldName.ToView().Equals(Key, ESearchCase::IgnoreCase))
 		{
-			return &Pair.Value;
+			return Object->TryGetField(FieldName);
 		}
 	}
 	return nullptr;
@@ -88,15 +99,15 @@ static const TSharedPtr<FJsonValue>* FindCaseInsensitive(const TSharedRef<FJsonO
 
 bool FJevParser::ExtractChoice(const TSharedRef<FJsonObject>& Root, FString& OutChoice, double& OutConfidence)
 {
-	const TSharedPtr<FJsonValue>* ChoiceValue = FindCaseInsensitive(Root, TEXT("choice"));
-	const TSharedPtr<FJsonValue>* ConfidenceValue = FindCaseInsensitive(Root, TEXT("confidence"));
-	if (!ChoiceValue || !ChoiceValue->IsValid() || !ConfidenceValue || !ConfidenceValue->IsValid())
+	const TSharedPtr<FJsonValue> ChoiceValue = FindCaseInsensitive(Root, TEXT("choice"));
+	const TSharedPtr<FJsonValue> ConfidenceValue = FindCaseInsensitive(Root, TEXT("confidence"));
+	if (!ChoiceValue.IsValid() || !ConfidenceValue.IsValid())
 	{
 		return false;
 	}
 
-	OutChoice = (*ChoiceValue)->AsString();
-	OutConfidence = (*ConfidenceValue)->AsNumber();
+	OutChoice = ChoiceValue->AsString();
+	OutConfidence = ConfidenceValue->AsNumber();
 	return !OutChoice.IsEmpty() && FJevParser::IsValidProbability(OutConfidence);
 }
 

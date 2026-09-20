@@ -199,12 +199,12 @@ void UJevSubsystem::RequestChoose(const FString& State, const FString& Question,
 	const TSharedRef<FJsonObject> QuestionDef = MakeShared<FJsonObject>();
 	QuestionDef->SetStringField(TEXT("type"), TEXT("choice"));
 	QuestionDef->SetStringField(TEXT("criteria"), Question);
-	const TSharedRef<FJsonArrayValue> OptionsJson = MakeShared<FJsonArrayValue>();
+	TArray<TSharedPtr<FJsonValue>> OptionsJson;
 	for (const FString& Option : Options)
 	{
-		OptionsJson->Values.Add(MakeShared<FJsonValueString>(Option));
+		OptionsJson.Add(MakeShared<FJsonValueString>(Option));
 	}
-	QuestionDef->SetArrayField(TEXT("choices"), OptionsJson);
+	QuestionDef->SetArrayField(TEXT("choices"), MoveTemp(OptionsJson));
 
 	const TSharedRef<FJsonObject> Questions = MakeShared<FJsonObject>();
 	Questions->SetObjectField(TEXT("decision"), QuestionDef);
@@ -223,7 +223,7 @@ void UJevSubsystem::RequestChoose(const FString& State, const FString& Question,
 		Body,
 		Timeout,
 		bDebug,
-		FJevHttpResponse::CreateLambda([WeakThis, OnDone, bDebug](const FJevRawResponse& Raw, FHttpRequestPtr CompletedRequest)
+		FJevHttpResponse::CreateLambda([WeakThis, OnDone, bDebug, Options](const FJevRawResponse& Raw, FHttpRequestPtr CompletedRequest)
 		{
 			if (UJevSubsystem* StrongThis = WeakThis.Get())
 			{
