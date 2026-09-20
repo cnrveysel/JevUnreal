@@ -231,6 +231,7 @@ void UJevSubsystem::RequestChoose(const FString& State, const FString& Question,
 	FString Body;
 	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Body);
 	FJsonSerializer::Serialize(Root, Writer);
+	UE_LOG(LogJev, Log, TEXT("[Jev] Choose request JSON: %s"), *Body);
 
 	const TWeakObjectPtr<UJevSubsystem> WeakThis(this);
 	const float Timeout = TimeoutOverrideSeconds > 0.f ? TimeoutOverrideSeconds : Settings->RequestTimeoutSeconds;
@@ -262,6 +263,7 @@ void UJevSubsystem::RequestChoose(const FString& State, const FString& Question,
 
 			if (!Raw.bSuccess)
 			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] HTTP %d body: %s"), Raw.HttpStatusCode, *Raw.ResponseBody);
 				UE_LOG(LogJev, Warning, TEXT("[Jev] Choose request failed: %s"), *Raw.ErrorMessage);
 				OnDone.ExecuteIfBound(Result, Raw.ErrorMessage);
 				return;
