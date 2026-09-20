@@ -38,10 +38,10 @@ public:
 
 	//~ UCancellableAsyncAction
 	virtual void Activate() override;
-	virtual void Cancel() override;
 
 private:
 	void HandleResult(FJevDecisionResult Result, const FString& Error);
+	bool bHasCompleted = false;
 
 	TWeakObjectPtr<UObject> WorldContext;
 	FString State;
@@ -79,10 +79,10 @@ public:
 
 	//~ UCancellableAsyncAction
 	virtual void Activate() override;
-	virtual void Cancel() override;
 
 private:
 	void HandleResult(FJevRequestResult Result, const FString& Error);
+	bool bHasCompleted = false;
 
 	TWeakObjectPtr<UObject> WorldContext;
 	FString State;

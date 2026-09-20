@@ -36,7 +36,7 @@ private:
 	FString ResolveModel(const FString& ModelOverride) const;
 
 	/** Active requests, kept so weak-object lifetimes remain clean. */
-	TArray<TSharedRef<IHttpRequest, ESPMode::ThreadSafe>> ActiveRequests;
+	TArray<TSharedPtr<IHttpRequest, ESPMode::ThreadSafe>> ActiveRequests;
 };
 
 #undef UE_API

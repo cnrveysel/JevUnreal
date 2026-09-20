@@ -10,7 +10,10 @@
 
 void UJevSubsystem::Deinitialize()
 {
-	for (const TSharedRef<IHttpRequest>& Request : ActiveRequests)
+	// Cancellation may invoke the completion delegate immediately, which removes
+	// requests from ActiveRequests. Iterate a snapshot to keep that safe.
+	const TArray<TSharedPtr<IHttpRequest, ESPMode::ThreadSafe>> RequestsToCancel = ActiveRequests;
+	for (const TSharedPtr<IHttpRequest, ESPMode::ThreadSafe>& Request : RequestsToCancel)
 	{
 		if (Request->GetStatus() == EHttpRequestStatus::Processing)
 		{
@@ -48,6 +51,9 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 	const FString Endpoint = ResolveEndpoint(TEXT(""));
 	const FString Model = ResolveModel(TEXT(""));
 
+	UE_LOG(LogJev, Log, TEXT("[Jev] RequestYesNo entered (state length %d, question length %d)"), State.Len(), Question.Len());
+	UE_LOG(LogJev, Log, TEXT("[Jev] Model: %s, timeout: %.1fs"), *Model, TimeoutOverrideSeconds > 0.f ? TimeoutOverrideSeconds : Settings->RequestTimeoutSeconds);
+
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetStringField(TEXT("model"), Model);
 	Root->SetStringField(TEXT("state"), State);
@@ -66,20 +72,38 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 
 	const TWeakObjectPtr<UJevSubsystem> WeakThis(this);
 	const float Timeout = TimeoutOverrideSeconds > 0.f ? TimeoutOverrideSeconds : Settings->RequestTimeoutSeconds;
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FJevHttpClient::PostJson(
+	UE_LOG(LogJev, Log, TEXT("[Jev] Request body length: %d"), Body.Len());
+
+	const TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request = FJevHttpClient::PostJson(
 		Endpoint,
 		Settings->bUseProxy ? FString() : Settings->ApiKey,
 		Body,
 		Timeout,
 		bDebug,
-		FJevHttpResponse::CreateLambda([WeakThis, OnDone, bDebug](const FJevRawResponse& Raw)
+		FJevHttpResponse::CreateLambda([WeakThis, OnDone, bDebug](const FJevRawResponse& Raw, FHttpRequestPtr CompletedRequest)
 		{
+			if (UJevSubsystem* StrongThis = WeakThis.Get())
+			{
+				if (CompletedRequest.IsValid())
+				{
+					StrongThis->ActiveRequests.Remove(CompletedRequest);
+					UE_LOG(LogJev, Log, TEXT("[Jev] ActiveRequests remove (%d remaining)"), StrongThis->ActiveRequests.Num());
+				}
+			}
+			else
+			{
+				return;
+			}
+
 			FJevDecisionResult Result;
 			Result.RawResponse = Raw.ResponseBody;
 			Result.LatencyMs = Raw.LatencyMs;
 
+			UE_LOG(LogJev, Log, TEXT("[Jev] Response handler entered (success=%d, http=%d)"), Raw.bSuccess ? 1 : 0, Raw.HttpStatusCode);
+
 			if (!Raw.bSuccess)
 			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Firing transport error to async node"));
 				OnDone.ExecuteIfBound(Result, Raw.ErrorMessage);
 				return;
 			}
@@ -88,6 +112,7 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 			const TSharedPtr<FJsonObject> Json = FJevParser::ParseJson(Raw.ResponseBody, ParseError);
 			if (!Json.IsValid())
 			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Parse failed: %s"), *ParseError);
 				OnDone.ExecuteIfBound(Result, ParseError);
 				return;
 			}
@@ -95,6 +120,7 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 			double YesProbability = 0.0;
 			if (!FJevParser::ExtractYesProbability(Json.ToSharedRef(), YesProbability))
 			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Parser failure: no valid noul probability"));
 				if (bDebug)
 				{
 					UE_LOG(LogJev, Warning, TEXT("No valid noul probability (0..1) found in response."));
@@ -107,27 +133,27 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 			double Confidence = 0.0;
 			FJevParser::NormalizeYesNo(YesProbability, bYes, Confidence);
 
+			UE_LOG(LogJev, Log, TEXT("[Jev] Parsed noul: %.3f"), YesProbability);
+
 			Result.Answer = bYes ? EJevYesNo::Yes : EJevYesNo::No;
 			Result.YesProbability = static_cast<float>(YesProbability);
 			Result.Confidence = static_cast<float>(Confidence);
 
-			if (bDebug)
-			{
-				UE_LOG(LogJev, Log, TEXT("Decision: %s | Probability: %.3f | Latency: %.0f ms"),
-					bYes ? TEXT("YES") : TEXT("NO"), YesProbability, Raw.LatencyMs);
-			}
+			UE_LOG(LogJev, Log, TEXT("[Jev] Parser success"));
+			UE_LOG(LogJev, Log, TEXT("[Jev] Decision: %s | Probability: %.3f | Latency: %.0f ms"),
+				bYes ? TEXT("YES") : TEXT("NO"), YesProbability, Raw.LatencyMs);
 
 			OnDone.ExecuteIfBound(Result, FString());
 		}));
 
-	ActiveRequests.Add(Request);
-	Request->OnProcessRequestComplete().BindLambda([WeakThis, Request](FHttpRequestPtr, const FHttpResponsePtr&, bool)
+	if (!Request.IsValid())
 	{
-		if (UJevSubsystem* StrongThis = WeakThis.Get())
-		{
-			StrongThis->ActiveRequests.Remove(Request);
-		}
-	});
+		UE_LOG(LogJev, Warning, TEXT("[Jev] Request failed to start; nothing to track"));
+		return;
+	}
+
+	ActiveRequests.Add(Request);
+	UE_LOG(LogJev, Log, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
 }
 
 void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuestionsJson, const FString& ModelOverride, const FString& EndpointOverride, const FJevRequestResultDelegate& OnDone)
@@ -157,29 +183,56 @@ void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuest
 	FJsonSerializer::Serialize(Root, Writer);
 
 	const TWeakObjectPtr<UJevSubsystem> WeakThis(this);
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FJevHttpClient::PostJson(
+	const TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request = FJevHttpClient::PostJson(
 		Endpoint,
 		Settings->bUseProxy ? FString() : Settings->ApiKey,
 		Body,
 		Settings->RequestTimeoutSeconds,
 		Settings->bDebugLogging,
-		FJevHttpResponse::CreateLambda([OnDone](const FJevRawResponse& Raw)
+		FJevHttpResponse::CreateLambda([WeakThis, OnDone](const FJevRawResponse& Raw, FHttpRequestPtr CompletedRequest)
 		{
+			if (UJevSubsystem* StrongThis = WeakThis.Get())
+			{
+				if (CompletedRequest.IsValid())
+				{
+					StrongThis->ActiveRequests.Remove(CompletedRequest);
+					UE_LOG(LogJev, Log, TEXT("[Jev] ActiveRequests remove (%d remaining)"), StrongThis->ActiveRequests.Num());
+				}
+			}
+			else
+			{
+				return;
+			}
+
 			FJevRequestResult Result;
 			Result.bSuccess = Raw.bSuccess;
 			Result.HttpStatusCode = Raw.HttpStatusCode;
 			Result.RawJsonResponse = Raw.ResponseBody;
 			Result.ErrorMessage = Raw.ErrorMessage;
 			Result.LatencyMs = Raw.LatencyMs;
-			OnDone.ExecuteIfBound(Result, Raw.ErrorMessage);
+			if (Result.bSuccess)
+			{
+				FString ResponseParseError;
+				if (!FJevParser::ParseJson(Raw.ResponseBody, ResponseParseError).IsValid())
+				{
+					Result.bSuccess = false;
+					Result.ErrorMessage = ResponseParseError;
+					UE_LOG(LogJev, Warning, TEXT("[Jev] Parser failure: %s"), *ResponseParseError);
+				}
+				else
+				{
+					UE_LOG(LogJev, Log, TEXT("[Jev] Parser success"));
+				}
+			}
+			OnDone.ExecuteIfBound(Result, Result.ErrorMessage);
 		}));
 
-	ActiveRequests.Add(Request);
-	Request->OnProcessRequestComplete().BindLambda([WeakThis, Request](FHttpRequestPtr, const FHttpResponsePtr&, bool)
+	if (!Request.IsValid())
 	{
-		if (UJevSubsystem* StrongThis = WeakThis.Get())
-		{
-			StrongThis->ActiveRequests.Remove(Request);
-		}
-	});
+		UE_LOG(LogJev, Warning, TEXT("[Jev] Request failed to start; nothing to track"));
+		return;
+	}
+
+	ActiveRequests.Add(Request.ToSharedRef());
+	UE_LOG(LogJev, Log, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
 }

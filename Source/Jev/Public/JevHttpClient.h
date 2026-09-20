@@ -14,7 +14,7 @@ struct FJevRawResponse
 	float LatencyMs = 0.f;
 };
 
-DECLARE_DELEGATE_OneParam(FJevHttpResponse, const FJevRawResponse&);
+DECLARE_DELEGATE_TwoParams(FJevHttpResponse, const FJevRawResponse&, FHttpRequestPtr);
 
 /**
  * Thin asynchronous HTTP wrapper around Unreal's HTTP module.
@@ -24,11 +24,12 @@ class FJevHttpClient
 {
 public:
 	/**
-	 * Sends a POST with the given JSON body. OnResponse may fire from any
-	 * thread safe point Unreal invokes the completion handler; the request
-	 * object is kept alive until completion via a shared reference.
+	 * Sends a POST with the given JSON body. OnResponse fires exactly once
+	 * when the request completes, fails to start, or times out. Returns the
+	 * live request, or null when ProcessRequest() failed (OnResponse has
+	 * already fired with an error in that case).
 	 */
-	static TSharedRef<IHttpRequest> PostJson(
+	static TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> PostJson(
 		const FString& Url,
 		const FString& ApiKey,
 		const FString& JsonBody,
