@@ -25,17 +25,11 @@ static bool FindFirstNoul(const TSharedPtr<FJsonValue>& Value, double& OutYesPro
 	if (Value->Type == EJson::Object)
 	{
 		const TSharedPtr<FJsonObject> Object = Value->AsObject();
-		const TSharedPtr<UE::JSON::Private::FJsonStringSet> StringSet = Object->GetStringSet();
-		if (!StringSet.IsValid())
+		for (const TPair<UE::FSharedString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
 		{
-			return false;
-		}
-
-		for (const UE::FSharedString& FieldName : *StringSet)
-		{
-			if (FieldName.ToView().Equals(TEXT("noul"), ESearchCase::IgnoreCase))
+			if (Pair.Key.ToView().Equals(TEXT("noul"), ESearchCase::IgnoreCase))
 			{
-				const TSharedPtr<FJsonValue> NoulValue = Object->TryGetField(FieldName);
+				const TSharedPtr<FJsonValue>& NoulValue = Pair.Value;
 				if (NoulValue.IsValid() && NoulValue->Type == EJson::Number)
 				{
 					const double Candidate = NoulValue->AsNumber();
@@ -46,7 +40,7 @@ static bool FindFirstNoul(const TSharedPtr<FJsonValue>& Value, double& OutYesPro
 					}
 				}
 			}
-			if (FindFirstNoul(Object->TryGetField(FieldName), OutYesProbability))
+			if (FindFirstNoul(Pair.Value, OutYesProbability))
 			{
 				return true;
 			}
@@ -81,17 +75,11 @@ static TSharedPtr<FJsonValue> FindCaseInsensitive(const TSharedRef<FJsonObject>&
 		return Found;
 	}
 
-	const TSharedPtr<UE::JSON::Private::FJsonStringSet> StringSet = Object->GetStringSet();
-	if (!StringSet.IsValid())
+	for (const TPair<UE::FSharedString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
 	{
-		return nullptr;
-	}
-
-	for (const UE::FSharedString& FieldName : *StringSet)
-	{
-		if (FieldName.ToView().Equals(Key, ESearchCase::IgnoreCase))
+		if (Pair.Key.ToView().Equals(Key, ESearchCase::IgnoreCase))
 		{
-			return Object->TryGetField(FieldName);
+			return Pair.Value;
 		}
 	}
 	return nullptr;
