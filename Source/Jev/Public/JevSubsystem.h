@@ -10,6 +10,7 @@
 class IHttpRequest;
 
 DECLARE_DELEGATE_TwoParams(FJevYesNoResult, FJevDecisionResult, const FString&);
+DECLARE_DELEGATE_TwoParams(FJevProbabilityResultDelegate, FJevProbabilityResult, const FString&);
 DECLARE_DELEGATE_TwoParams(FJevChooseResultDelegate, FJevChooseResult, const FString&);
 DECLARE_DELEGATE_TwoParams(FJevRequestResultDelegate, FJevRequestResult, const FString&);
 
@@ -28,6 +29,9 @@ public:
 
 	/** Sends a Yes / No decision request. OnDone fires when the request completes. */
 	void RequestYesNo(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevYesNoResult& OnDone, const FString& EndpointOverride = FString());
+
+	/** Sends a noul request and returns its probability without a Yes / No output. */
+	void RequestProbability(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevProbabilityResultDelegate& OnDone, const FString& EndpointOverride = FString());
 
 	/** Sends a Choose decision request over the supplied options. */
 	void RequestChoose(const FString& State, const FString& Question, const TArray<FString>& Options, float TimeoutOverrideSeconds, const FJevChooseResultDelegate& OnDone, const FString& EndpointOverride = FString());

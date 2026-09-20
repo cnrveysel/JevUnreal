@@ -38,6 +38,29 @@ struct FJevDecisionResult
 	float LatencyMs = 0.f;
 };
 
+/** Raw noul probability and confidence for the Jev Probability node. */
+USTRUCT(BlueprintType)
+struct FJevProbabilityResult
+{
+	GENERATED_BODY()
+
+	/** The noul probability returned by Jev, validated to be in 0..1. */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	float Probability = 0.f;
+
+	/** Confidence in the more likely outcome: max(Probability, 1 - Probability). */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	float Confidence = 0.f;
+
+	/** Raw JSON response body, useful for debugging. */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	FString RawResponse;
+
+	/** Round-trip latency of the HTTP request in milliseconds. */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	float LatencyMs = 0.f;
+};
+
 /** Result of a generic Jev request. */
 USTRUCT(BlueprintType)
 struct FJevRequestResult

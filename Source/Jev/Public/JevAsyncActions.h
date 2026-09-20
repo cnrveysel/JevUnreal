@@ -50,6 +50,39 @@ private:
 	FString EndpointOverride;
 };
 
+/** Returns the noul probability for State + Question without a Yes / No output. */
+UCLASS()
+class UE_API UAsyncActionJevProbability : public UCancellableAsyncAction
+{
+	GENERATED_BODY()
+
+public:
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnJevProbabilitySuccess, FJevProbabilityResult, Result);
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnJevProbabilityError, const FString&, Error);
+
+	UPROPERTY(BlueprintAssignable, Category="Jev|Decision")
+	FOnJevProbabilitySuccess OnSuccess;
+
+	UPROPERTY(BlueprintAssignable, Category="Jev|Decision")
+	FOnJevProbabilityError OnError;
+
+	/** Leave Timeout Seconds at zero and Endpoint Override empty to use Project Settings. */
+	UFUNCTION(BlueprintCallable, Category="Jev|Decision", meta=(BlueprintInternalUseOnly="true", WorldContext="WorldContextObject", DisplayName="Jev Probability", AdvancedDisplay="TimeoutSeconds,EndpointOverride"))
+	static UAsyncActionJevProbability* JevProbability(UObject* WorldContextObject, const FString& State, const FString& Question, float TimeoutSeconds = 0.f, const FString& EndpointOverride = TEXT(""));
+
+	virtual void Activate() override;
+
+private:
+	void HandleResult(FJevProbabilityResult Result, const FString& Error);
+	bool bHasCompleted = false;
+
+	TWeakObjectPtr<UObject> WorldContext;
+	FString State;
+	FString Question;
+	float TimeoutSeconds = 0.f;
+	FString EndpointOverride;
+};
+
 /**
  * "Jev Choose" — asynchronous option decision node.
  * Sends State + Question + Options to Jev and returns exactly one option.

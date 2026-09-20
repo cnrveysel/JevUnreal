@@ -9,6 +9,7 @@ struct FJevCompletionCapture
 	int32 Count = 0;
 	FString Error;
 	bool bSucceeded = true;
+	float DecisionConfidence = -1.f;
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FJevMissingKeyYesNoTest, "Jev.Request.MissingKeyYesNo",
@@ -24,20 +25,53 @@ bool FJevMissingKeyYesNoTest::RunTest(const FString& Parameters)
 	AddExpectedError(TEXT("Jev API key is missing"), EAutomationExpectedErrorFlags::Contains, 2);
 
 	const TSharedRef<FJevCompletionCapture> Capture = MakeShared<FJevCompletionCapture>();
-	const FJevYesNoResult OnDone = FJevYesNoResult::CreateLambda([Capture](FJevDecisionResult, const FString& InError)
+	const FJevYesNoResult OnDone = FJevYesNoResult::CreateLambda([Capture](FJevDecisionResult Result, const FString& InError)
 	{
 		++Capture->Count;
 		Capture->Error = InError;
+		Capture->DecisionConfidence = Result.Confidence;
 	});
 	Subsystem->RequestYesNo(TEXT("state"), TEXT("question"), 0.f,
 		OnDone);
 
 	TestEqual(TEXT("completed once"), Capture->Count, 1);
 	TestTrue(TEXT("missing key error"), Capture->Error.Contains(TEXT("API key is missing")));
+	TestEqual(TEXT("error result keeps default confidence"), Capture->DecisionConfidence, 0.f);
 
 	Capture->Count = 0;
 	Capture->Error.Empty();
 	Subsystem->RequestYesNo(TEXT("state"), TEXT("question"), 0.f, OnDone, TEXT("https://api.typesafe.ai/v1/systemone"));
+	TestEqual(TEXT("override also completed once"), Capture->Count, 1);
+	TestTrue(TEXT("override still requires key"), Capture->Error.Contains(TEXT("API key is missing")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FJevMissingKeyProbabilityTest, "Jev.Request.MissingKeyProbability",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FJevMissingKeyProbabilityTest::RunTest(const FString& Parameters)
+{
+	UJevSettings* Settings = UJevSettings::Get();
+	TGuardValue<bool> RestoreProxy(Settings->bUseProxy, false);
+	TGuardValue<FString> RestoreKey(Settings->ApiKey, FString());
+	UGameInstance* GameInstance = NewObject<UGameInstance>();
+	UJevSubsystem* Subsystem = NewObject<UJevSubsystem>(GameInstance);
+	AddExpectedError(TEXT("Jev API key is missing"), EAutomationExpectedErrorFlags::Contains, 2);
+
+	const TSharedRef<FJevCompletionCapture> Capture = MakeShared<FJevCompletionCapture>();
+	const FJevProbabilityResultDelegate OnDone = FJevProbabilityResultDelegate::CreateLambda([Capture](FJevProbabilityResult, const FString& InError)
+	{
+		++Capture->Count;
+		Capture->Error = InError;
+	});
+	Subsystem->RequestProbability(TEXT("state"), TEXT("question"), 0.f, OnDone);
+
+	TestEqual(TEXT("completed once"), Capture->Count, 1);
+	TestTrue(TEXT("missing key error"), Capture->Error.Contains(TEXT("API key is missing")));
+
+	Capture->Count = 0;
+	Capture->Error.Empty();
+	Subsystem->RequestProbability(TEXT("state"), TEXT("question"), 0.f, OnDone, TEXT("https://api.typesafe.ai/v1/systemone"));
 	TestEqual(TEXT("override also completed once"), Capture->Count, 1);
 	TestTrue(TEXT("override still requires key"), Capture->Error.Contains(TEXT("API key is missing")));
 	return true;
@@ -87,7 +121,7 @@ bool FJevMissingProxyEndpointTest::RunTest(const FString& Parameters)
 	TGuardValue<FString> RestoreEndpoint(Settings->ProxyEndpoint, FString());
 	UGameInstance* GameInstance = NewObject<UGameInstance>();
 	UJevSubsystem* Subsystem = NewObject<UJevSubsystem>(GameInstance);
-	AddExpectedError(TEXT("Jev proxy endpoint is missing"), EAutomationExpectedErrorFlags::Contains, 2);
+	AddExpectedError(TEXT("Jev proxy endpoint is missing"), EAutomationExpectedErrorFlags::Contains, 3);
 
 	const TSharedRef<FJevCompletionCapture> Capture = MakeShared<FJevCompletionCapture>();
 	Subsystem->RequestYesNo(TEXT("state"), TEXT("question"), 0.f,
@@ -98,6 +132,17 @@ bool FJevMissingProxyEndpointTest::RunTest(const FString& Parameters)
 		}));
 	TestEqual(TEXT("Yes/No completed once"), Capture->Count, 1);
 	TestTrue(TEXT("Yes/No proxy error"), Capture->Error.Contains(TEXT("proxy endpoint is missing")));
+
+	Capture->Count = 0;
+	Capture->Error.Empty();
+	Subsystem->RequestProbability(TEXT("state"), TEXT("question"), 0.f,
+		FJevProbabilityResultDelegate::CreateLambda([Capture](FJevProbabilityResult, const FString& InError)
+		{
+			++Capture->Count;
+			Capture->Error = InError;
+		}));
+	TestEqual(TEXT("Probability completed once"), Capture->Count, 1);
+	TestTrue(TEXT("Probability proxy error"), Capture->Error.Contains(TEXT("proxy endpoint is missing")));
 
 	Capture->Count = 0;
 	Capture->Error.Empty();

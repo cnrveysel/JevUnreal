@@ -60,7 +60,7 @@ FString UJevSubsystem::ResolveModel(const FString& ModelOverride) const
 	return ModelOverride.IsEmpty() ? UJevSettings::Get()->Model : ModelOverride;
 }
 
-void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevYesNoResult& OnDone, const FString& EndpointOverride)
+void UJevSubsystem::RequestProbability(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevProbabilityResultDelegate& OnDone, const FString& EndpointOverride)
 {
 	const UJevSettings* Settings = UJevSettings::Get();
 	const bool bDebug = Settings->bDebugLogging;
@@ -71,7 +71,7 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 	if (!ConnectionError.IsEmpty())
 	{
 		UE_LOG(LogJev, Warning, TEXT("[Jev] %s"), *ConnectionError);
-		OnDone.ExecuteIfBound(FJevDecisionResult(), ConnectionError);
+		OnDone.ExecuteIfBound(FJevProbabilityResult(), ConnectionError);
 		return;
 	}
 
@@ -115,7 +115,7 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 				return;
 			}
 
-			FJevDecisionResult Result;
+			FJevProbabilityResult Result;
 			Result.RawResponse = Raw.ResponseBody;
 			Result.LatencyMs = Raw.LatencyMs;
 
@@ -143,18 +143,13 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 				return;
 			}
 
-			bool bYes = false;
-			double Confidence = 0.0;
-			FJevParser::NormalizeYesNo(YesProbability, bYes, Confidence);
-
-			Result.Answer = bYes ? EJevYesNo::Yes : EJevYesNo::No;
-			Result.YesProbability = static_cast<float>(YesProbability);
-			Result.Confidence = static_cast<float>(Confidence);
+			Result.Probability = static_cast<float>(YesProbability);
+			Result.Confidence = static_cast<float>(FMath::Max(YesProbability, 1.0 - YesProbability));
 
 			if (bDebug)
 			{
-				UE_LOG(LogJev, Log, TEXT("[Jev] Decision: %s | Probability: %.3f | Latency: %.0f ms"),
-					bYes ? TEXT("YES") : TEXT("NO"), YesProbability, Raw.LatencyMs);
+				UE_LOG(LogJev, Log, TEXT("[Jev] Noul probability: %.3f | Latency: %.0f ms"),
+					YesProbability, Raw.LatencyMs);
 			}
 
 			OnDone.ExecuteIfBound(Result, FString());
@@ -168,6 +163,30 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 
 	ActiveRequests.Add(Request);
 	UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
+}
+
+void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevYesNoResult& OnDone, const FString& EndpointOverride)
+{
+	const FJevProbabilityResultDelegate OnProbabilityDone = FJevProbabilityResultDelegate::CreateLambda([OnDone](FJevProbabilityResult Probability, const FString& Error)
+	{
+		FJevDecisionResult Result;
+		Result.RawResponse = MoveTemp(Probability.RawResponse);
+		Result.LatencyMs = Probability.LatencyMs;
+		if (!Error.IsEmpty())
+		{
+			OnDone.ExecuteIfBound(Result, Error);
+			return;
+		}
+
+		bool bYes = false;
+		double Confidence = 0.0;
+		FJevParser::NormalizeYesNo(Probability.Probability, bYes, Confidence);
+		Result.Answer = bYes ? EJevYesNo::Yes : EJevYesNo::No;
+		Result.YesProbability = Probability.Probability;
+		Result.Confidence = static_cast<float>(Confidence);
+		OnDone.ExecuteIfBound(Result, Error);
+	});
+	RequestProbability(State, Question, TimeoutOverrideSeconds, OnProbabilityDone, EndpointOverride);
 }
 
 static FString MakeChoiceOptionKey(int32 OptionIndex)

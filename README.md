@@ -29,6 +29,7 @@ Combine it freely with Behavior Trees, State Trees, EQS, or anything else — Je
 ## Features
 
 - **Jev Yes / No** async Blueprint node: State + Question → YES/NO, Yes probability, confidence, raw response, latency
+- **Jev Probability** async Blueprint node: State + Question → validated noul probability, confidence, raw response, latency
 - **Jev Choose** async Blueprint node: State + Question + Options → one supplied option, selected index, confidence, raw response, latency
 - **Make Jev Request** advanced async node: send raw Questions JSON, get the raw Jev response
 - Fully asynchronous via Unreal's HTTP module — no game-thread blocking
@@ -45,7 +46,7 @@ Combine it freely with Behavior Trees, State Trees, EQS, or anything else — Je
 3. Rebuild your project and open the editor.
 4. In any Blueprint, search for **Jev Yes / No**.
 
-Tested on Unreal Engine 5.8. Other Unreal Engine versions have not been verified for this release.
+Jev Yes / No was tested on Unreal Engine 5.8 in v0.1; Jev Choose has also been confirmed working in Unreal. The v0.2 Probability node has not yet been built or run in Unreal. Other Unreal Engine versions have not been verified.
 
 ## Blueprint usage
 
@@ -77,6 +78,17 @@ Tick / interval
     Raw Questions JSON: {"decision":{"type":"noul","instructions":"Should we spawn a storm?"}}
   On Success → parse RawJsonResponse yourself
 ```
+
+### Example D — direct probability
+
+```text
+→ Jev Probability
+    State:    "Player health is 18. Ammo is 0. Cover is nearby."
+    Question: "Should the player move to cover?"
+  On Success → use Result.Probability as a value from 0.0 to 1.0
+```
+
+**Jev Probability** returns the validated `noul` value without a YES/NO output. Its confidence is the probability of the more likely outcome: `max(Probability, 1 - Probability)`. It uses the same request, timeout, parsing, and error handling as **Jev Yes / No**.
 
 The **Yes / No** node normalizes the answer for you:
 
@@ -141,7 +153,7 @@ The plugin then sends requests to your backend with no Authorization header; you
 ## Architecture
 
 ```
-Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevChoose / UAsyncActionJevRequest)
+Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevProbability / UAsyncActionJevChoose / UAsyncActionJevRequest)
   → UJevSubsystem (game instance subsystem, request lifetime)
     → FJevHttpClient (Unreal HTTP module, async POST + JSON)
       → TypeSafe / proxy endpoint
@@ -152,7 +164,7 @@ Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevChoose / UAsyncActio
 
 - `JevTypes.h` — Blueprint structs and enums
 - `JevSettings.h` — `UDeveloperSettings` for Project Settings
-- `JevParser` — pure probability extraction and YES/NO normalization (no HTTP coupling)
+- `JevParser` — pure noul probability extraction and YES/NO normalization (no HTTP coupling)
 - `JevHttpClient` — async HTTP wrapper; never blocks the game thread
 - `JevSubsystem` — request orchestration and lifetime handling
 - `JevAsyncActions` — Blueprint-facing async nodes
@@ -167,7 +179,7 @@ Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevChoose / UAsyncActio
 ## Roadmap
 
 - [x] `Jev Choose` node using the verified native `choice` response schema
-- [ ] `Jev Choose` compile and live-endpoint verification
+- [ ] `Jev Probability` compile and live-endpoint verification
 - [ ] Request batching helpers
 - [ ] Sample project / demo map
 

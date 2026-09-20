@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
+	"Version": 2,
 	"VersionName": "0.2.0",
 	"FriendlyName": "Jev",
 	"Description": "General-purpose Jev decision layer for Unreal Engine Blueprints. Sends state and questions to a TypeSafe Jev endpoint and returns asynchronous decisions.",
