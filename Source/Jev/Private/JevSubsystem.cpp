@@ -216,6 +216,7 @@ void UJevSubsystem::RequestChoose(const FString& State, const FString& Question,
 	Root->SetStringField(TEXT("state"), State);
 
 	const TSharedRef<FJsonObject> QuestionDef = MakeShared<FJsonObject>();
+	QuestionDef->SetStringField(TEXT("type"), TEXT("choice"));
 	QuestionDef->SetStringField(TEXT("instructions"), Question);
 	const TSharedRef<FJsonObject> Criteria = MakeShared<FJsonObject>();
 	for (int32 OptionIndex = 0; OptionIndex < Options.Num(); ++OptionIndex)
