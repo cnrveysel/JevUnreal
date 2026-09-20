@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "Jev",
+	"Description": "General-purpose Jev decision layer for Unreal Engine Blueprints. Sends state and questions to a TypeSafe Jev endpoint and returns asynchronous decisions.",
+	"Category": "AI",
+	"CreatedBy": "Veysel",
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "Jev",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "JevEditorTests",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default"
+		}
+	]
+}

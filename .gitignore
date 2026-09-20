@@ -1,0 +1,26 @@
+# Unreal generated
+Binaries/
+Intermediate/
+Build/
+DerivedDataCache/
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+*.log
+Saved/
+
+# Local secrets / machine config
+Config/DefaultEngine.ini
+Config/DefaultGame.ini
+*.ini.local
+JevExample.local.ini
+
+# OS junk
+.DS_Store
+Thumbs.db

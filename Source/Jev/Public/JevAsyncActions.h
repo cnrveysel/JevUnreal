@@ -1,0 +1,94 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Engine/CancellableAsyncAction.h"
+#include "JevTypes.h"
+#include "JevAsyncActions.generated.h"
+
+#define UE_API JEV_API
+
+class UJevSubsystem;
+
+/**
+ * "Jev Yes / No" — asynchronous decision node.
+ * Sends State + Question to Jev and returns a YES/NO answer with probability.
+ */
+UCLASS()
+class UE_API UAsyncActionJevYesNo : public UCancellableAsyncAction
+{
+	GENERATED_BODY()
+
+public:
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnJevYesNoSuccess, FJevDecisionResult, Result);
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnJevError, const FString&, Error);
+
+	UPROPERTY(BlueprintAssignable, Category="Jev|Decision")
+	FOnJevYesNoSuccess OnSuccess;
+
+	UPROPERTY(BlueprintAssignable, Category="Jev|Decision")
+	FOnJevError OnError;
+
+	/**
+	 * Ask Jev a Yes / No question about the given state.
+	 * Answer is YES when the Yes probability is >= 0.5.
+	 * Leave Endpoint Override empty to use the Project Settings endpoint.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Jev|Decision", meta=(BlueprintInternalUseOnly="true", WorldContext="WorldContextObject", DisplayName="Jev Yes / No", AdvancedDisplay="TimeoutSeconds,EndpointOverride"))
+	static UAsyncActionJevYesNo* JevYesNo(UObject* WorldContextObject, const FString& State, const FString& Question, float TimeoutSeconds = 0.f, const FString& EndpointOverride = TEXT(""));
+
+	//~ UCancellableAsyncAction
+	virtual void Activate() override;
+	virtual void Cancel() override;
+
+private:
+	void HandleResult(FJevDecisionResult Result, const FString& Error);
+
+	TWeakObjectPtr<UObject> WorldContext;
+	FString State;
+	FString Question;
+	float TimeoutSeconds = 0.f;
+	FString EndpointOverride;
+};
+
+/**
+ * "Make Jev Request" — advanced asynchronous node.
+ * Sends State + raw Questions JSON and returns the raw Jev response.
+ */
+UCLASS()
+class UE_API UAsyncActionJevRequest : public UCancellableAsyncAction
+{
+	GENERATED_BODY()
+
+public:
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnJevRequestSuccess, FJevRequestResult, Result);
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnJevRequestError, const FString&, Error);
+
+	UPROPERTY(BlueprintAssignable, Category="Jev|Request")
+	FOnJevRequestSuccess OnSuccess;
+
+	UPROPERTY(BlueprintAssignable, Category="Jev|Request")
+	FOnJevRequestError OnError;
+
+	/**
+	 * Advanced: send a raw Jev request. Raw Questions JSON must be a JSON
+	 * object such as {"decision":{"type":"noul","instructions":"..."}}.
+	 * Leave Model Override / Endpoint Override empty for Project Settings values.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Jev|Request", meta=(BlueprintInternalUseOnly="true", WorldContext="WorldContextObject", DisplayName="Make Jev Request", AdvancedDisplay="ModelOverride,EndpointOverride"))
+	static UAsyncActionJevRequest* JevRequest(UObject* WorldContextObject, const FString& State, const FString& RawQuestionsJson, const FString& ModelOverride = TEXT(""), const FString& EndpointOverride = TEXT(""));
+
+	//~ UCancellableAsyncAction
+	virtual void Activate() override;
+	virtual void Cancel() override;
+
+private:
+	void HandleResult(FJevRequestResult Result, const FString& Error);
+
+	TWeakObjectPtr<UObject> WorldContext;
+	FString State;
+	FString RawQuestionsJson;
+	FString ModelOverride;
+	FString EndpointOverride;
+};
+
+#undef UE_API
