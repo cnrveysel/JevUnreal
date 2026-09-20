@@ -170,6 +170,25 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 	UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
 }
 
+static FString MakeChoiceOptionKey(int32 OptionIndex)
+{
+	return FString::Printf(TEXT("option_%d"), OptionIndex);
+}
+
+static bool ParseChoiceOptionKey(const FString& Choice, int32 OptionCount, int32& OutOptionIndex)
+{
+	for (int32 OptionIndex = 0; OptionIndex < OptionCount; ++OptionIndex)
+	{
+		if (Choice.Equals(MakeChoiceOptionKey(OptionIndex), ESearchCase::CaseSensitive))
+		{
+			OutOptionIndex = OptionIndex;
+			return true;
+		}
+	}
+	return false;
+}
+
+
 void UJevSubsystem::RequestChoose(const FString& State, const FString& Question, const TArray<FString>& Options, float TimeoutOverrideSeconds, const FJevChooseResultDelegate& OnDone, const FString& EndpointOverride)
 {
 	const UJevSettings* Settings = UJevSettings::Get();
@@ -197,14 +216,13 @@ void UJevSubsystem::RequestChoose(const FString& State, const FString& Question,
 	Root->SetStringField(TEXT("state"), State);
 
 	const TSharedRef<FJsonObject> QuestionDef = MakeShared<FJsonObject>();
-	QuestionDef->SetStringField(TEXT("type"), TEXT("choice"));
-	QuestionDef->SetStringField(TEXT("criteria"), Question);
-	TArray<TSharedPtr<FJsonValue>> OptionsJson;
-	for (const FString& Option : Options)
+	QuestionDef->SetStringField(TEXT("instructions"), Question);
+	const TSharedRef<FJsonObject> Criteria = MakeShared<FJsonObject>();
+	for (int32 OptionIndex = 0; OptionIndex < Options.Num(); ++OptionIndex)
 	{
-		OptionsJson.Add(MakeShared<FJsonValueString>(Option));
+		Criteria->SetStringField(MakeChoiceOptionKey(OptionIndex), Options[OptionIndex]);
 	}
-	QuestionDef->SetArrayField(TEXT("choices"), MoveTemp(OptionsJson));
+	QuestionDef->SetObjectField(TEXT("criteria"), Criteria);
 
 	const TSharedRef<FJsonObject> Questions = MakeShared<FJsonObject>();
 	Questions->SetObjectField(TEXT("decision"), QuestionDef);
@@ -267,11 +285,11 @@ void UJevSubsystem::RequestChoose(const FString& State, const FString& Question,
 				return;
 			}
 
-			const int32 SelectedIndex = Options.IndexOfByKey(Choice);
-			if (SelectedIndex == INDEX_NONE)
+			int32 SelectedIndex = INDEX_NONE;
+			if (!ParseChoiceOptionKey(Choice, Options.Num(), SelectedIndex))
 			{
-				UE_LOG(LogJev, Warning, TEXT("[Jev] Choose response did not select a supplied option: %s"), *Choice);
-				OnDone.ExecuteIfBound(Result, TEXT("Jev did not select one of the supplied options"));
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Choose response did not return a valid supplied option key: %s"), *Choice);
+				OnDone.ExecuteIfBound(Result, TEXT("Jev did not return a valid supplied option key"));
 				return;
 			}
 
