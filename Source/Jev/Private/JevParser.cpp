@@ -87,8 +87,22 @@ static TSharedPtr<FJsonValue> FindCaseInsensitive(const TSharedRef<FJsonObject>&
 
 bool FJevParser::ExtractChoice(const TSharedRef<FJsonObject>& Root, FString& OutChoice, double& OutConfidence)
 {
-	const TSharedPtr<FJsonValue> ChoiceValue = FindCaseInsensitive(Root, TEXT("choice"));
-	const TSharedPtr<FJsonValue> ConfidenceValue = FindCaseInsensitive(Root, TEXT("confidence"));
+	const TSharedPtr<FJsonValue> AnswersValue = FindCaseInsensitive(Root, TEXT("answers"));
+	const TSharedPtr<FJsonObject> Answers = AnswersValue.IsValid() ? AnswersValue->AsObject() : nullptr;
+	if (!Answers.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonValue> DecisionValue = FindCaseInsensitive(Answers.ToSharedRef(), TEXT("decision"));
+	const TSharedPtr<FJsonObject> Decision = DecisionValue.IsValid() ? DecisionValue->AsObject() : nullptr;
+	if (!Decision.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FJsonValue> ChoiceValue = FindCaseInsensitive(Decision.ToSharedRef(), TEXT("choice"));
+	const TSharedPtr<FJsonValue> ConfidenceValue = FindCaseInsensitive(Decision.ToSharedRef(), TEXT("confidence"));
 	if (!ChoiceValue.IsValid() || !ConfidenceValue.IsValid())
 	{
 		return false;

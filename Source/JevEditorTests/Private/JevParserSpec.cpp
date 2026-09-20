@@ -77,7 +77,7 @@ void FJevParserSpec::Define()
 	{
 		It("extracts TypeSafe choice and confidence", [this]()
 		{
-			const TSharedPtr<FJsonObject> Root = ParseObject(TEXT("{\"choice\":\"Sword\",\"confidence\":0.82}"));
+			const TSharedPtr<FJsonObject> Root = ParseObject(TEXT("{\"answers\":{\"decision\":{\"choice\":\"Sword\",\"confidence\":0.82}}}"));
 			FString Choice;
 			double Confidence = 0.0;
 			TestTrue(TEXT("extracted"), FJevParser::ExtractChoice(Root.ToSharedRef(), Choice, Confidence));
@@ -90,8 +90,8 @@ void FJevParserSpec::Define()
 			FString Choice;
 			double Confidence = 0.0;
 			TestFalse(TEXT("missing fields"), FJevParser::ExtractChoice(ParseObject(TEXT("{}")).ToSharedRef(), Choice, Confidence));
-			TestFalse(TEXT("invalid confidence"), FJevParser::ExtractChoice(ParseObject(TEXT("{\"choice\":\"Sword\",\"confidence\":1.2}")).ToSharedRef(), Choice, Confidence));
-			TestFalse(TEXT("empty choice"), FJevParser::ExtractChoice(ParseObject(TEXT("{\"choice\":\"\",\"confidence\":0.5}")).ToSharedRef(), Choice, Confidence));
+			TestFalse(TEXT("invalid confidence"), FJevParser::ExtractChoice(ParseObject(TEXT("{\"answers\":{\"decision\":{\"choice\":\"Sword\",\"confidence\":1.2}}}")).ToSharedRef(), Choice, Confidence));
+			TestFalse(TEXT("empty choice"), FJevParser::ExtractChoice(ParseObject(TEXT("{\"answers\":{\"decision\":{\"choice\":\"\",\"confidence\":0.5}}}")).ToSharedRef(), Choice, Confidence));
 		});
 	});
 }
