@@ -270,6 +270,7 @@ void UJevSubsystem::RequestChoose(const FString& State, const FString& Question,
 				return;
 			}
 
+			UE_LOG(LogJev, Log, TEXT("[Jev] Choose HTTP 200 body: %s"), *Raw.ResponseBody);
 			FString ParseError;
 			const TSharedPtr<FJsonObject> Json = FJevParser::ParseJson(Raw.ResponseBody, ParseError);
 			if (!Json.IsValid())
