@@ -26,8 +26,8 @@ public:
 	/**
 	 * Sends a POST with the given JSON body. OnResponse fires exactly once
 	 * when the request completes, fails to start, or times out. Returns the
-	 * live request, or null when ProcessRequest() failed (OnResponse has
-	 * already fired with an error in that case).
+	 * live request, or null if it failed to start or completed synchronously.
+	 * OnResponse has already fired when null is returned.
 	 */
 	static TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> PostJson(
 		const FString& Url,

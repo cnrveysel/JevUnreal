@@ -26,7 +26,7 @@ public:
 	virtual void Deinitialize() override;
 
 	/** Sends a Yes / No decision request. OnDone fires when the request completes. */
-	void RequestYesNo(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevYesNoResult& OnDone);
+	void RequestYesNo(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevYesNoResult& OnDone, const FString& EndpointOverride = FString());
 
 	/** Sends a generic request with raw questions JSON. OnDone fires when the request completes. */
 	void RequestGeneric(const FString& State, const FString& RawQuestionsJson, const FString& ModelOverride, const FString& EndpointOverride, const FJevRequestResultDelegate& OnDone);

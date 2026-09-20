@@ -8,6 +8,22 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 
+static FString ValidateConnectionSettings(const UJevSettings* Settings, const FString& EndpointOverride)
+{
+	if (Settings->bUseProxy)
+	{
+		if (Settings->ProxyEndpoint.IsEmpty() && EndpointOverride.IsEmpty())
+		{
+			return TEXT("Jev proxy endpoint is missing; configure Proxy Endpoint or supply an endpoint override");
+		}
+	}
+	else if (Settings->ApiKey.IsEmpty())
+	{
+		return TEXT("Jev API key is missing; configure it in Project Settings or enable Use Proxy");
+	}
+	return FString();
+}
+
 void UJevSubsystem::Deinitialize()
 {
 	// Cancellation may invoke the completion delegate immediately, which removes
@@ -44,15 +60,20 @@ FString UJevSubsystem::ResolveModel(const FString& ModelOverride) const
 	return ModelOverride.IsEmpty() ? UJevSettings::Get()->Model : ModelOverride;
 }
 
-void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevYesNoResult& OnDone)
+void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, float TimeoutOverrideSeconds, const FJevYesNoResult& OnDone, const FString& EndpointOverride)
 {
 	const UJevSettings* Settings = UJevSettings::Get();
 	const bool bDebug = Settings->bDebugLogging;
-	const FString Endpoint = ResolveEndpoint(TEXT(""));
+	const FString Endpoint = ResolveEndpoint(EndpointOverride);
 	const FString Model = ResolveModel(TEXT(""));
 
-	UE_LOG(LogJev, Log, TEXT("[Jev] RequestYesNo entered (state length %d, question length %d)"), State.Len(), Question.Len());
-	UE_LOG(LogJev, Log, TEXT("[Jev] Model: %s, timeout: %.1fs"), *Model, TimeoutOverrideSeconds > 0.f ? TimeoutOverrideSeconds : Settings->RequestTimeoutSeconds);
+	const FString ConnectionError = ValidateConnectionSettings(Settings, EndpointOverride);
+	if (!ConnectionError.IsEmpty())
+	{
+		UE_LOG(LogJev, Warning, TEXT("[Jev] %s"), *ConnectionError);
+		OnDone.ExecuteIfBound(FJevDecisionResult(), ConnectionError);
+		return;
+	}
 
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetStringField(TEXT("model"), Model);
@@ -72,7 +93,6 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 
 	const TWeakObjectPtr<UJevSubsystem> WeakThis(this);
 	const float Timeout = TimeoutOverrideSeconds > 0.f ? TimeoutOverrideSeconds : Settings->RequestTimeoutSeconds;
-	UE_LOG(LogJev, Log, TEXT("[Jev] Request body length: %d"), Body.Len());
 
 	const TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request = FJevHttpClient::PostJson(
 		Endpoint,
@@ -87,7 +107,7 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 				if (CompletedRequest.IsValid())
 				{
 					StrongThis->ActiveRequests.Remove(CompletedRequest);
-					UE_LOG(LogJev, Log, TEXT("[Jev] ActiveRequests remove (%d remaining)"), StrongThis->ActiveRequests.Num());
+					UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests remove (%d remaining)"), StrongThis->ActiveRequests.Num());
 				}
 			}
 			else
@@ -99,11 +119,9 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 			Result.RawResponse = Raw.ResponseBody;
 			Result.LatencyMs = Raw.LatencyMs;
 
-			UE_LOG(LogJev, Log, TEXT("[Jev] Response handler entered (success=%d, http=%d)"), Raw.bSuccess ? 1 : 0, Raw.HttpStatusCode);
-
 			if (!Raw.bSuccess)
 			{
-				UE_LOG(LogJev, Warning, TEXT("[Jev] Firing transport error to async node"));
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Request failed: %s"), *Raw.ErrorMessage);
 				OnDone.ExecuteIfBound(Result, Raw.ErrorMessage);
 				return;
 			}
@@ -112,7 +130,7 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 			const TSharedPtr<FJsonObject> Json = FJevParser::ParseJson(Raw.ResponseBody, ParseError);
 			if (!Json.IsValid())
 			{
-				UE_LOG(LogJev, Warning, TEXT("[Jev] Parse failed: %s"), *ParseError);
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Response parse failed: %s"), *ParseError);
 				OnDone.ExecuteIfBound(Result, ParseError);
 				return;
 			}
@@ -121,10 +139,6 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 			if (!FJevParser::ExtractYesProbability(Json.ToSharedRef(), YesProbability))
 			{
 				UE_LOG(LogJev, Warning, TEXT("[Jev] Parser failure: no valid noul probability"));
-				if (bDebug)
-				{
-					UE_LOG(LogJev, Warning, TEXT("No valid noul probability (0..1) found in response."));
-				}
 				OnDone.ExecuteIfBound(Result, TEXT("Response contained no valid Yes probability"));
 				return;
 			}
@@ -133,27 +147,27 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 			double Confidence = 0.0;
 			FJevParser::NormalizeYesNo(YesProbability, bYes, Confidence);
 
-			UE_LOG(LogJev, Log, TEXT("[Jev] Parsed noul: %.3f"), YesProbability);
-
 			Result.Answer = bYes ? EJevYesNo::Yes : EJevYesNo::No;
 			Result.YesProbability = static_cast<float>(YesProbability);
 			Result.Confidence = static_cast<float>(Confidence);
 
-			UE_LOG(LogJev, Log, TEXT("[Jev] Parser success"));
-			UE_LOG(LogJev, Log, TEXT("[Jev] Decision: %s | Probability: %.3f | Latency: %.0f ms"),
-				bYes ? TEXT("YES") : TEXT("NO"), YesProbability, Raw.LatencyMs);
+			if (bDebug)
+			{
+				UE_LOG(LogJev, Log, TEXT("[Jev] Decision: %s | Probability: %.3f | Latency: %.0f ms"),
+					bYes ? TEXT("YES") : TEXT("NO"), YesProbability, Raw.LatencyMs);
+			}
 
 			OnDone.ExecuteIfBound(Result, FString());
 		}));
 
 	if (!Request.IsValid())
 	{
-		UE_LOG(LogJev, Warning, TEXT("[Jev] Request failed to start; nothing to track"));
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] No active request to track"));
 		return;
 	}
 
 	ActiveRequests.Add(Request);
-	UE_LOG(LogJev, Log, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
+	UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
 }
 
 void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuestionsJson, const FString& ModelOverride, const FString& EndpointOverride, const FJevRequestResultDelegate& OnDone)
@@ -169,6 +183,15 @@ void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuest
 	{
 		FJevRequestResult Result;
 		Result.ErrorMessage = FString::Printf(TEXT("Raw Questions JSON is invalid: %s"), *ParseError);
+		OnDone.ExecuteIfBound(Result, Result.ErrorMessage);
+		return;
+	}
+	const FString ConnectionError = ValidateConnectionSettings(Settings, EndpointOverride);
+	if (!ConnectionError.IsEmpty())
+	{
+		UE_LOG(LogJev, Warning, TEXT("[Jev] %s"), *ConnectionError);
+		FJevRequestResult Result;
+		Result.ErrorMessage = ConnectionError;
 		OnDone.ExecuteIfBound(Result, Result.ErrorMessage);
 		return;
 	}
@@ -196,7 +219,7 @@ void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuest
 				if (CompletedRequest.IsValid())
 				{
 					StrongThis->ActiveRequests.Remove(CompletedRequest);
-					UE_LOG(LogJev, Log, TEXT("[Jev] ActiveRequests remove (%d remaining)"), StrongThis->ActiveRequests.Num());
+					UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests remove (%d remaining)"), StrongThis->ActiveRequests.Num());
 				}
 			}
 			else
@@ -210,6 +233,10 @@ void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuest
 			Result.RawJsonResponse = Raw.ResponseBody;
 			Result.ErrorMessage = Raw.ErrorMessage;
 			Result.LatencyMs = Raw.LatencyMs;
+			if (!Result.bSuccess)
+			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Generic request failed: %s"), *Result.ErrorMessage);
+			}
 			if (Result.bSuccess)
 			{
 				FString ResponseParseError;
@@ -221,7 +248,7 @@ void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuest
 				}
 				else
 				{
-					UE_LOG(LogJev, Log, TEXT("[Jev] Parser success"));
+					UE_LOG(LogJev, Verbose, TEXT("[Jev] Generic response parsed"));
 				}
 			}
 			OnDone.ExecuteIfBound(Result, Result.ErrorMessage);
@@ -229,10 +256,10 @@ void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuest
 
 	if (!Request.IsValid())
 	{
-		UE_LOG(LogJev, Warning, TEXT("[Jev] Request failed to start; nothing to track"));
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] No active request to track"));
 		return;
 	}
 
 	ActiveRequests.Add(Request.ToSharedRef());
-	UE_LOG(LogJev, Log, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
+	UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
 }

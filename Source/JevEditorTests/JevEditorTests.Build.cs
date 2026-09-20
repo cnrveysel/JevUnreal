@@ -12,6 +12,7 @@ public class JevEditorTests : ModuleRules
 		{
 			"Core",
 			"CoreUObject",
+			"Engine",
 			"Jev",
 			"Json",
 			"FunctionalTesting"

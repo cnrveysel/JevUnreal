@@ -27,8 +27,6 @@ TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> FJevHttpClient::PostJson(
 	Request->SetTimeout(TimeoutSeconds);
 	Request->SetContentAsString(JsonBody);
 
-	UE_LOG(LogJev, Log, TEXT("[Jev] Completion delegate bound"));
-
 	Request->OnProcessRequestComplete().BindLambda(
 		[OnResponse, StartTime, bDebugLogging, CompletionCount](FHttpRequestPtr CompletedRequest, const FHttpResponsePtr& Response, bool bConnectedSuccessfully)
 		{
@@ -36,8 +34,7 @@ TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> FJevHttpClient::PostJson(
 			{
 				return;
 			}
-			UE_LOG(LogJev, Log, TEXT("[Jev] HTTP completion callback entered"));
-			UE_LOG(LogJev, Log, TEXT("[Jev] Connected successfully: %d"), bConnectedSuccessfully ? 1 : 0);
+			UE_LOG(LogJev, Verbose, TEXT("[Jev] HTTP completion callback entered (connected=%d)"), bConnectedSuccessfully ? 1 : 0);
 
 			FJevRawResponse Result;
 			Result.LatencyMs = static_cast<float>((FPlatformTime::Seconds() - StartTime) * 1000.0);
@@ -59,28 +56,22 @@ TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> FJevHttpClient::PostJson(
 					Result.bSuccess = true;
 				}
 			}
-			UE_LOG(LogJev, Log, TEXT("[Jev] HTTP status: %d"), Result.HttpStatusCode);
-			UE_LOG(LogJev, Log, TEXT("[Jev] Response body length: %d"), Result.ResponseBody.Len());
+			UE_LOG(LogJev, Log, TEXT("[Jev] HTTP status %d, latency %.0f ms"), Result.HttpStatusCode, Result.LatencyMs);
 
 			if (bDebugLogging)
 			{
-				UE_LOG(LogJev, Log, TEXT("[Jev] Invoking response handler"));
+				UE_LOG(LogJev, Log, TEXT("[Jev] Response body length: %d"), Result.ResponseBody.Len());
 			}
 			OnResponse.ExecuteIfBound(Result, CompletedRequest);
 		});
 
-	if (bDebugLogging)
-	{
-		UE_LOG(LogJev, Log, TEXT("[Jev] Request created (timeout %.1fs, body length %d)"), TimeoutSeconds, JsonBody.Len());
-	}
-
-	UE_LOG(LogJev, Log, TEXT("[Jev] Calling ProcessRequest"));
+	UE_LOG(LogJev, Verbose, TEXT("[Jev] Starting HTTP request (timeout %.1fs, body length %d)"), TimeoutSeconds, JsonBody.Len());
 	const bool bStarted = Request->ProcessRequest();
-	UE_LOG(LogJev, Log, TEXT("[Jev] ProcessRequest started: %d, status after start: %d"), bStarted ? 1 : 0, static_cast<int32>(Request->GetStatus()));
+	UE_LOG(LogJev, Verbose, TEXT("[Jev] ProcessRequest started: %d"), bStarted ? 1 : 0);
 
 	if (!bStarted)
 	{
-		UE_LOG(LogJev, Warning, TEXT("[Jev] ProcessRequest failed; firing error instead of hanging"));
+		UE_LOG(LogJev, Warning, TEXT("[Jev] HTTP request failed to start"));
 		if (CompletionCount->Increment() == 1)
 		{
 			FJevRawResponse Result;

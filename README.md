@@ -1,6 +1,6 @@
 # Jev for Unreal Engine
 
-Use **Jev decisions** directly from Unreal Engine Blueprints.
+Use **Jev decisions** directly from Unreal Engine Blueprints. This is the v0.1 release, tested with Unreal Engine 5.8, including a manual Play In Editor request to the real TypeSafe API.
 
 ```
 State  →  Jev  →  Decision  →  Blueprint
@@ -44,7 +44,7 @@ Combine it freely with Behavior Trees, State Trees, EQS, or anything else — Je
 3. Rebuild your project and open the editor.
 4. In any Blueprint, search for **Jev Yes / No**.
 
-Requires Unreal Engine 5.x. Developed against UE 5.6–5.8.
+Tested on Unreal Engine 5.8. Other Unreal Engine versions have not been verified for this release.
 
 ## Blueprint usage
 
@@ -96,11 +96,13 @@ Open **Project Settings → Plugins → Jev**:
 | Model | `jev-latest` | Jev model name |
 | API Key | — | Bearer key; see security below |
 | Request Timeout | 30 s | Seconds |
-| Debug Logging | off | Lifecycle logs, no secrets |
+| Debug Logging | off | Decision and response-size diagnostics, no secrets |
 | Use Proxy | off | Production mode |
 | Proxy Endpoint | — | Your backend URL used instead of Endpoint |
 
 An example ini block lives in `Config/JevExample.ini`.
+
+In direct API mode, a missing API key is reported through the Blueprint error output at runtime. Proxy mode similarly reports an error if no proxy endpoint is configured.
 
 ## Development direct API mode
 
@@ -132,6 +134,7 @@ The plugin then sends requests to your backend with no Authorization header; you
 - The API key is plain-text config. It is **not** safe in source, packaged builds, or version control.
 - Never commit real keys. `.gitignore` excludes local secret configs.
 - Debug logging never prints the API key, Authorization header, or request secrets.
+- In direct mode, an endpoint override receives the configured bearer key. Use overrides only with trusted endpoints.
 - Use proxy mode for anything public or released.
 
 ## Architecture
@@ -164,7 +167,6 @@ Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevRequest)
 ## Roadmap
 
 - [ ] `Jev Choose` node once the choice response schema is verified
-- [ ] Per-request timeout pin wired to the HTTP layer
 - [ ] Request batching helpers
 - [ ] Sample project / demo map
 
@@ -174,13 +176,7 @@ This project was vibe coded with AI coding agents as an experiment in building s
 
 ## Documentation assets
 
-- `docs/jev-blueprint-node.png` — *placeholder, to be captured* (see below)
-- `docs/jev-demo.gif` — *optional placeholder, to be captured*
-
-**What to capture once the plugin works:**
-
-1. A Blueprint graph showing `Begin Play → Jev Yes / No → On Success → Branch` with the State and Question pins visibly filled (save as `docs/jev-blueprint-node.png`).
-2. Optionally, a short GIF of pressing Play and seeing the decision fire via debug logging (save as `docs/jev-demo.gif`).
+Blueprint screenshots and a Play In Editor demo are planned but are not included in v0.1. See [docs/README.md](docs/README.md) for the capture checklist.
 
 ## License
 

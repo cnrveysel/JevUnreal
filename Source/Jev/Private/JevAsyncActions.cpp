@@ -7,7 +7,6 @@
 
 UAsyncActionJevYesNo* UAsyncActionJevYesNo::JevYesNo(UObject* WorldContextObject, const FString& State, const FString& Question, float TimeoutSeconds, const FString& EndpointOverride)
 {
-	UE_LOG(LogJev, Log, TEXT("[Jev] Async node factory created"));
 	UAsyncActionJevYesNo* Action = NewObject<UAsyncActionJevYesNo>();
 	Action->WorldContext = WorldContextObject;
 	Action->State = State;
@@ -20,7 +19,7 @@ UAsyncActionJevYesNo* UAsyncActionJevYesNo::JevYesNo(UObject* WorldContextObject
 
 void UAsyncActionJevYesNo::Activate()
 {
-	UE_LOG(LogJev, Log, TEXT("[Jev] Async node activated"));
+	UE_LOG(LogJev, Verbose, TEXT("[Jev] Yes/No node activated"));
 	UJevSubsystem* Subsystem = nullptr;
 	if (UObject* Context = WorldContext.Get())
 	{
@@ -32,7 +31,7 @@ void UAsyncActionJevYesNo::Activate()
 
 	if (!Subsystem)
 	{
-		UE_LOG(LogJev, Warning, TEXT("[Jev] Subsystem unresolved; broadcasting error"));
+		UE_LOG(LogJev, Warning, TEXT("[Jev] No valid world context for Yes/No request"));
 		OnError.Broadcast(TEXT("Jev requires a valid world context"));
 		SetReadyToDestroy();
 		return;
@@ -40,7 +39,7 @@ void UAsyncActionJevYesNo::Activate()
 
 	FJevYesNoResult OnDone;
 	OnDone.BindUObject(this, &UAsyncActionJevYesNo::HandleResult);
-	Subsystem->RequestYesNo(State, Question, TimeoutSeconds, OnDone);
+	Subsystem->RequestYesNo(State, Question, TimeoutSeconds, OnDone, EndpointOverride);
 }
 
 void UAsyncActionJevYesNo::HandleResult(FJevDecisionResult Result, const FString& Error)
@@ -54,12 +53,12 @@ void UAsyncActionJevYesNo::HandleResult(FJevDecisionResult Result, const FString
 
 	if (!Error.IsEmpty())
 	{
-		UE_LOG(LogJev, Log, TEXT("[Jev] Broadcasting Blueprint error"));
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] Broadcasting Blueprint error"));
 		OnError.Broadcast(Error);
 	}
 	else
 	{
-		UE_LOG(LogJev, Log, TEXT("[Jev] Broadcasting Blueprint success"));
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] Broadcasting Blueprint success"));
 		OnSuccess.Broadcast(Result);
 	}
 	SetReadyToDestroy();
@@ -67,7 +66,6 @@ void UAsyncActionJevYesNo::HandleResult(FJevDecisionResult Result, const FString
 
 UAsyncActionJevRequest* UAsyncActionJevRequest::JevRequest(UObject* WorldContextObject, const FString& State, const FString& RawQuestionsJson, const FString& ModelOverride, const FString& EndpointOverride)
 {
-	UE_LOG(LogJev, Log, TEXT("[Jev] Async node factory created"));
 	UAsyncActionJevRequest* Action = NewObject<UAsyncActionJevRequest>();
 	Action->WorldContext = WorldContextObject;
 	Action->State = State;
@@ -80,7 +78,7 @@ UAsyncActionJevRequest* UAsyncActionJevRequest::JevRequest(UObject* WorldContext
 
 void UAsyncActionJevRequest::Activate()
 {
-	UE_LOG(LogJev, Log, TEXT("[Jev] Async node activated"));
+	UE_LOG(LogJev, Verbose, TEXT("[Jev] Generic node activated"));
 	UJevSubsystem* Subsystem = nullptr;
 	if (UObject* Context = WorldContext.Get())
 	{
@@ -92,7 +90,7 @@ void UAsyncActionJevRequest::Activate()
 
 	if (!Subsystem)
 	{
-		UE_LOG(LogJev, Warning, TEXT("[Jev] Subsystem unresolved; broadcasting error"));
+		UE_LOG(LogJev, Warning, TEXT("[Jev] No valid world context for generic request"));
 		OnError.Broadcast(TEXT("Jev requires a valid world context"));
 		SetReadyToDestroy();
 		return;
@@ -114,12 +112,12 @@ void UAsyncActionJevRequest::HandleResult(FJevRequestResult Result, const FStrin
 
 	if (!Error.IsEmpty())
 	{
-		UE_LOG(LogJev, Log, TEXT("[Jev] Broadcasting Blueprint error"));
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] Broadcasting Blueprint error"));
 		OnError.Broadcast(Error);
 	}
 	else
 	{
-		UE_LOG(LogJev, Log, TEXT("[Jev] Broadcasting Blueprint success"));
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] Broadcasting Blueprint success"));
 		OnSuccess.Broadcast(Result);
 	}
 	SetReadyToDestroy();
