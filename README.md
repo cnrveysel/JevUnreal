@@ -1,195 +1,64 @@
-# Jev for Unreal Engine
+# JevUnreal
 
-Use **Jev decisions** directly from Unreal Engine Blueprints. This is the v0.2 code preview. The v0.1 release was tested with Unreal Engine 5.8, including a manual Play In Editor request to the real TypeSafe API.
+**JevUnreal v0.2** brings [TypeSafe Jev](https://typesafe.ai) decisions into Unreal Engine 5.8 Blueprints. Send a description of your game state and a question; an async node returns the result through **On Success** or an error through **On Error**. Your Blueprint decides what to do with the answer.
 
-```
-State  →  Jev  →  Decision  →  Blueprint
-```
+## Blueprint nodes
 
-Jev is a general-purpose decision layer. Give it a natural-language snapshot of your game state and a question; it returns a decision and a probability. Unreal stays in control: your Blueprints execute the behavior.
-
-## What it is
-
-**Jev** is an open-source Unreal Engine 5 plugin that exposes [TypeSafe Jev](https://typesafe.ai) as reusable Blueprint nodes. It is *not* an NPC framework — it is a thin, native-feeling async bridge between any game state and a Jev decision endpoint.
-
-Use it anywhere a yes/no or weighted decision helps:
-
-- NPC decisions
-- Dynamic difficulty
-- Dialogue decisions
-- Procedural generation
-- Game director logic
-- Yes / no gameplay decisions
-- UI decisions
-- Simulation logic
-- Experimentation
-
-Combine it freely with Behavior Trees, State Trees, EQS, or anything else — Jev supplies decisions; Unreal executes behavior. It is not a replacement for those systems.
-
-## Features
-
-- **Jev Yes / No** async Blueprint node: State + Question → YES/NO, Yes probability, confidence, raw response, latency
-- **Jev Probability** async Blueprint node: State + Question → validated noul probability, confidence, raw response, latency
-- **Jev Choose** async Blueprint node: State + Question + Options → one supplied option, selected index, confidence, raw response, latency
-- **Make Jev Request** advanced async node: send raw Questions JSON, get the raw Jev response
-- Fully asynchronous via Unreal's HTTP module — no game-thread blocking
-- Project Settings → Plugins → Jev configuration (endpoint, model, API key, timeout, debug logging, proxy)
-- Proxy mode for production backends
-- Optional debug logging that never prints API keys or Authorization headers
-- Dedicated `LogJev` category
-- Focused parser/normalization tests
-
-## Installation
-
-1. Clone or download this repository.
-2. Copy the `Jev` plugin folder (the whole repo) into your project's `Plugins/` directory, or add it to your `.uproject` plugins list.
-3. Rebuild your project and open the editor.
-4. In any Blueprint, search for **Jev Yes / No**.
-
-Jev Yes / No was tested on Unreal Engine 5.8 in v0.1; Jev Choose has also been confirmed working in Unreal. The v0.2 Probability node has not yet been built or run in Unreal. Other Unreal Engine versions have not been verified.
-
-## Blueprint usage
-
-### Example A — dynamic difficulty
-
-```text
-Begin Play
-  → Jev Yes / No
-      State:    "Player has died five times in ten minutes."
-      Question: "Should the game reduce the difficulty?"
-    On Success → Branch on Answer
-```
-
-### Example B — NPC retreat
-
-```text
-Tick / interval
-  → Jev Yes / No
-      State:    "Health: 18\nAmmo: 0\nEnemy distance: 300\nCover nearby: true"
-      Question: "Should this character retreat?"
-    On Success → if Answer == YES → Play Retreat behavior
-```
-
-### Example C — generic request
-
-```text
-→ Make Jev Request
-    State:             "Sandbox world with sparse resources."
-    Raw Questions JSON: {"decision":{"type":"noul","instructions":"Should we spawn a storm?"}}
-  On Success → parse RawJsonResponse yourself
-```
-
-### Example D — direct probability
-
-```text
-→ Jev Probability
-    State:    "Player health is 18. Ammo is 0. Cover is nearby."
-    Question: "Should the player move to cover?"
-  On Success → use Result.Probability as a value from 0.0 to 1.0
-```
-
-**Jev Probability** returns the validated `noul` value without a YES/NO output. Its confidence is the probability of the more likely outcome: `max(Probability, 1 - Probability)`. It uses the same request, timeout, parsing, and error handling as **Jev Yes / No**.
-
-The **Yes / No** node normalizes the answer for you:
-
-| Yes probability | Answer | Confidence |
-|-----------------|--------|------------|
-| ≥ 0.5 | YES | probability |
-| < 0.5 | NO  | 1 − probability |
-
-Probabilities outside `0..1` are rejected with an error, never silently rescaled.
-
-## Configuration
-
-Open **Project Settings → Plugins → Jev**:
-
-| Setting | Default | Notes |
+| Node | Inputs | On Success result |
 |---|---|---|
-| Endpoint | `https://api.typesafe.ai/v1/systemone` | TypeSafe or proxy URL |
-| Model | `jev-latest` | Jev model name |
-| API Key | — | Bearer key; see security below |
-| Request Timeout | 30 s | Seconds |
-| Debug Logging | off | Decision and response-size diagnostics, no secrets |
-| Use Proxy | off | Production mode |
-| Proxy Endpoint | — | Your backend URL used instead of Endpoint |
+| **Jev Yes / No** | State, Question | YES/NO answer, Yes probability, confidence, raw response, latency |
+| **Jev Choose** | State, Question, Options | Selected option and index, confidence, raw response, latency |
+| **Jev Probability** | State, Question | Probability from 0.0 to 1.0, confidence, raw response, latency |
 
-An example ini block lives in `Config/JevExample.ini`.
+Each node also has an optional timeout override. **Jev Yes / No** answers YES when the returned probability is at least 0.5. **Jev Probability** exposes that probability directly; its confidence is `max(Probability, 1 - Probability)`. **Jev Choose** returns one of the supplied options and the confidence reported by Jev. Latency is in milliseconds.
 
-In direct API mode, a missing API key is reported through the Blueprint error output at runtime. Proxy mode similarly reports an error if no proxy endpoint is configured.
+### Example uses
 
-## Development direct API mode
+```text
+Dynamic difficulty
+  Jev Yes / No
+  State: "The player has died five times in ten minutes."
+  Question: "Should the game reduce the difficulty?"
+  On Success -> branch on Result.Answer
 
-For prototyping, set **API Key** in Project Settings (or your local `DefaultEngine.ini`) and leave **Use Proxy** off:
+Dialogue
+  Jev Choose
+  State: "The player helped the merchant."
+  Question: "Which response should the merchant give?"
+  Options: ["Offer a discount", "Share a rumor", "Say thanks"]
+  On Success -> use Result.SelectedOption
 
-```ini
-[/Script/Jev.JevSettings]
-ApiKey=PASTE_YOUR_LOCAL_KEY_HERE
-bDebugLogging=True
+NPC behavior
+  Jev Probability
+  State: "Health is low; cover is nearby."
+  Question: "Should this NPC retreat?"
+  On Success -> use Result.Probability in your own gameplay logic
 ```
 
-Requests go straight from Unreal to TypeSafe with `Authorization: Bearer <key>`.
+For custom question JSON, the advanced **Make Jev Request** node returns the raw API response.
 
-## Production proxy recommendation
+## Setup
 
-**Do not ship a TypeSafe API key inside a packaged game.** The key lives in config files that ship with the build; it is extractable by anyone. This plugin will never make that safe.
+1. Copy this repository into `<YourProject>/Plugins/Jev`.
+2. Rebuild your Unreal Engine 5.8 project and open it in the editor.
+3. Open **Project Settings → Plugins → Jev**. Set the endpoint, model, request timeout, and either an API key or a proxy endpoint.
+4. Search for **Jev Yes / No**, **Jev Choose**, or **Jev Probability** in a Blueprint.
 
-For production:
+The default endpoint is `https://api.typesafe.ai/v1/systemone`, the default model is `jev-latest`, and the default timeout is 30 seconds. See [Config/JevExample.ini](Config/JevExample.ini) for a configuration example. A missing API key in direct mode, or a missing proxy endpoint in proxy mode, reaches the node's **On Error** output.
 
-1. Run a tiny backend that holds your real key.
-2. Expose an endpoint that accepts the same request shape.
-3. Enable **Use Proxy** and set **Proxy Endpoint** to your backend.
-4. Leave the in-game **API Key** empty.
+## API key and packaged games
 
-The plugin then sends requests to your backend with no Authorization header; your proxy injects the key and forwards to TypeSafe.
+**Direct API mode is for local development.** It sends the configured API key as a bearer token. A key stored in Unreal project config can be extracted from a packaged game, so do not ship one or commit it to version control. Endpoint overrides in direct mode also receive that key; use only trusted endpoints.
 
-## Security
+For a public packaged build, enable **Use Proxy**, set **Proxy Endpoint** to your backend, and leave the game's API key empty. Your backend holds the key and forwards requests to TypeSafe. The plugin sends no Authorization header in proxy mode.
 
-- The API key is plain-text config. It is **not** safe in source, packaged builds, or version control.
-- Never commit real keys. `.gitignore` excludes local secret configs.
-- Debug logging never prints the API key, Authorization header, or request secrets.
-- In direct mode, an endpoint override receives the configured bearer key. Use overrides only with trusted endpoints.
-- Use proxy mode for anything public or released.
+## How it works
 
-## Architecture
-
-```
-Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevProbability / UAsyncActionJevChoose / UAsyncActionJevRequest)
-  → UJevSubsystem (game instance subsystem, request lifetime)
-    → FJevHttpClient (Unreal HTTP module, async POST + JSON)
-      → TypeSafe / proxy endpoint
-    ← response
-  → FJevParser (pure JSON/normalization logic, unit tested)
-← Blueprint delegates (OnSuccess / OnError)
-```
-
-- `JevTypes.h` — Blueprint structs and enums
-- `JevSettings.h` — `UDeveloperSettings` for Project Settings
-- `JevParser` — pure noul probability extraction and YES/NO normalization (no HTTP coupling)
-- `JevHttpClient` — async HTTP wrapper; never blocks the game thread
-- `JevSubsystem` — request orchestration and lifetime handling
-- `JevAsyncActions` — Blueprint-facing async nodes
-- `JevEditorTests` — automation specs for parsing and normalization
-
-## Current limitations
-
-- No retry logic — a failed or timed-out request surfaces as an error to your Blueprint.
-- The API key travels through your process in plaintext config; production use requires a proxy.
-- Rate limits, billing, and upstream schema changes are your responsibility to handle (the node reports HTTP status and errors).
-
-## Roadmap
-
-- [x] `Jev Choose` node using the verified native `choice` response schema
-- [ ] `Jev Probability` compile and live-endpoint verification
-- [ ] Request batching helpers
-- [ ] Sample project / demo map
+The Blueprint nodes use Unreal's HTTP module asynchronously. The subsystem keeps requests alive while they are active, and the HTTP client uses a single completion handler for responses. The Yes / No and Probability nodes share the same `noul` request and parsing path; Choose uses Jev's `choice` response. Requests that fail or time out reach **On Error**; there is no automatic retry.
 
 ## Vibe coded
 
 This project was vibe coded with AI coding agents as an experiment in building small, useful tools quickly. I directed the product design, architecture, testing, debugging, and iterations while AI agents helped write much of the implementation.
-
-## Documentation assets
-
-Blueprint screenshots and a Play In Editor demo are planned but are not included in v0.1. See [docs/README.md](docs/README.md) for the capture checklist.
 
 ## License
 
