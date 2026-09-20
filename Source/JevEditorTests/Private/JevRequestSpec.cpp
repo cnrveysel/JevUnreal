@@ -111,3 +111,30 @@ bool FJevMissingProxyEndpointTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("generic proxy error"), Capture->Error.Contains(TEXT("proxy endpoint is missing")));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FJevInvalidChooseOptionsTest, "Jev.Request.InvalidChooseOptions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FJevInvalidChooseOptionsTest::RunTest(const FString& Parameters)
+{
+	UGameInstance* GameInstance = NewObject<UGameInstance>();
+	UJevSubsystem* Subsystem = NewObject<UJevSubsystem>(GameInstance);
+
+	const TSharedRef<FJevCompletionCapture> Capture = MakeShared<FJevCompletionCapture>();
+	const FJevChooseResultDelegate OnDone = FJevChooseResultDelegate::CreateLambda([Capture](FJevChooseResult, const FString& InError)
+	{
+		++Capture->Count;
+		Capture->Error = InError;
+	});
+
+	Subsystem->RequestChoose(TEXT("state"), TEXT("question"), {}, 0.f, OnDone);
+	TestEqual(TEXT("empty options completed once"), Capture->Count, 1);
+	TestTrue(TEXT("empty options error"), Capture->Error.Contains(TEXT("nonempty Options array")));
+
+	Capture->Count = 0;
+	Capture->Error.Empty();
+	Subsystem->RequestChoose(TEXT("state"), TEXT("question"), {TEXT("A"), TEXT("")}, 0.f, OnDone);
+	TestEqual(TEXT("empty option completed once"), Capture->Count, 1);
+	TestTrue(TEXT("empty option error"), Capture->Error.Contains(TEXT("without empty strings")));
+	return true;
+}

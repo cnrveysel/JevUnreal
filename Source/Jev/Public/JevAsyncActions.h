@@ -51,6 +51,42 @@ private:
 };
 
 /**
+ * "Jev Choose" — asynchronous option decision node.
+ * Sends State + Question + Options to Jev and returns exactly one option.
+ */
+UCLASS()
+class UE_API UAsyncActionJevChoose : public UCancellableAsyncAction
+{
+	GENERATED_BODY()
+
+public:
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnJevChooseSuccess, FJevChooseResult, Result);
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnJevChooseError, const FString&, Error);
+
+	UPROPERTY(BlueprintAssignable, Category="Jev|Decision")
+	FOnJevChooseSuccess OnSuccess;
+
+	UPROPERTY(BlueprintAssignable, Category="Jev|Decision")
+	FOnJevChooseError OnError;
+
+	UFUNCTION(BlueprintCallable, Category="Jev|Decision", meta=(BlueprintInternalUseOnly="true", WorldContext="WorldContextObject", DisplayName="Jev Choose", AdvancedDisplay="TimeoutSeconds,EndpointOverride"))
+	static UAsyncActionJevChoose* JevChoose(UObject* WorldContextObject, const FString& State, const FString& Question, const TArray<FString>& Options, float TimeoutSeconds = 0.f, const FString& EndpointOverride = TEXT(""));
+
+	virtual void Activate() override;
+
+private:
+	void HandleResult(FJevChooseResult Result, const FString& Error);
+	bool bHasCompleted = false;
+
+	TWeakObjectPtr<UObject> WorldContext;
+	FString State;
+	FString Question;
+	TArray<FString> Options;
+	float TimeoutSeconds = 0.f;
+	FString EndpointOverride;
+};
+
+/**
  * "Make Jev Request" — advanced asynchronous node.
  * Sends State + raw Questions JSON and returns the raw Jev response.
  */

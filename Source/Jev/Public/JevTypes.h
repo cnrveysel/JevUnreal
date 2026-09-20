@@ -64,3 +64,30 @@ struct FJevRequestResult
 	UPROPERTY(BlueprintReadOnly, Category="Jev")
 	float LatencyMs = 0.f;
 };
+
+/** Result of a Choose decision. */
+USTRUCT(BlueprintType)
+struct FJevChooseResult
+{
+	GENERATED_BODY()
+
+	/** Option text returned by Jev. */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	FString SelectedOption;
+
+	/** Zero-based index into the supplied Options array; INDEX_NONE when invalid. */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	int32 SelectedIndex = INDEX_NONE;
+
+	/** Confidence returned by Jev, clamped-valid only (0..1). */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	float Confidence = 0.f;
+
+	/** Raw JSON response body, useful for debugging. */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	FString RawResponse;
+
+	/** Round-trip latency of the HTTP request in milliseconds. */
+	UPROPERTY(BlueprintReadOnly, Category="Jev")
+	float LatencyMs = 0.f;
+};

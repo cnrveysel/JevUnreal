@@ -170,6 +170,133 @@ void UJevSubsystem::RequestYesNo(const FString& State, const FString& Question, 
 	UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
 }
 
+void UJevSubsystem::RequestChoose(const FString& State, const FString& Question, const TArray<FString>& Options, float TimeoutOverrideSeconds, const FJevChooseResultDelegate& OnDone, const FString& EndpointOverride)
+{
+	const UJevSettings* Settings = UJevSettings::Get();
+	const bool bDebug = Settings->bDebugLogging;
+	const FString Endpoint = ResolveEndpoint(EndpointOverride);
+	const FString Model = ResolveModel(TEXT(""));
+
+	if (Options.IsEmpty() || Options.ContainsByPredicate([](const FString& Option) { return Option.IsEmpty(); }))
+	{
+		UE_LOG(LogJev, Warning, TEXT("[Jev] Choose request rejected: options must be nonempty and contain no empty strings"));
+		OnDone.ExecuteIfBound(FJevChooseResult(), TEXT("Jev Choose requires a nonempty Options array without empty strings"));
+		return;
+	}
+
+	const FString ConnectionError = ValidateConnectionSettings(Settings, EndpointOverride);
+	if (!ConnectionError.IsEmpty())
+	{
+		UE_LOG(LogJev, Warning, TEXT("[Jev] %s"), *ConnectionError);
+		OnDone.ExecuteIfBound(FJevChooseResult(), ConnectionError);
+		return;
+	}
+
+	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+	Root->SetStringField(TEXT("model"), Model);
+	Root->SetStringField(TEXT("state"), State);
+
+	const TSharedRef<FJsonObject> QuestionDef = MakeShared<FJsonObject>();
+	QuestionDef->SetStringField(TEXT("type"), TEXT("choice"));
+	QuestionDef->SetStringField(TEXT("criteria"), Question);
+	const TSharedRef<FJsonArrayValue> OptionsJson = MakeShared<FJsonArrayValue>();
+	for (const FString& Option : Options)
+	{
+		OptionsJson->Values.Add(MakeShared<FJsonValueString>(Option));
+	}
+	QuestionDef->SetArrayField(TEXT("choices"), OptionsJson);
+
+	const TSharedRef<FJsonObject> Questions = MakeShared<FJsonObject>();
+	Questions->SetObjectField(TEXT("decision"), QuestionDef);
+	Root->SetObjectField(TEXT("questions"), Questions);
+
+	FString Body;
+	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Body);
+	FJsonSerializer::Serialize(Root, Writer);
+
+	const TWeakObjectPtr<UJevSubsystem> WeakThis(this);
+	const float Timeout = TimeoutOverrideSeconds > 0.f ? TimeoutOverrideSeconds : Settings->RequestTimeoutSeconds;
+
+	const TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request = FJevHttpClient::PostJson(
+		Endpoint,
+		Settings->bUseProxy ? FString() : Settings->ApiKey,
+		Body,
+		Timeout,
+		bDebug,
+		FJevHttpResponse::CreateLambda([WeakThis, OnDone, bDebug](const FJevRawResponse& Raw, FHttpRequestPtr CompletedRequest)
+		{
+			if (UJevSubsystem* StrongThis = WeakThis.Get())
+			{
+				if (CompletedRequest.IsValid())
+				{
+					StrongThis->ActiveRequests.Remove(CompletedRequest);
+					UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests remove (%d remaining)"), StrongThis->ActiveRequests.Num());
+				}
+			}
+			else
+			{
+				return;
+			}
+
+			FJevChooseResult Result;
+			Result.RawResponse = Raw.ResponseBody;
+			Result.LatencyMs = Raw.LatencyMs;
+
+			if (!Raw.bSuccess)
+			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Choose request failed: %s"), *Raw.ErrorMessage);
+				OnDone.ExecuteIfBound(Result, Raw.ErrorMessage);
+				return;
+			}
+
+			FString ParseError;
+			const TSharedPtr<FJsonObject> Json = FJevParser::ParseJson(Raw.ResponseBody, ParseError);
+			if (!Json.IsValid())
+			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Choose response parse failed: %s"), *ParseError);
+				OnDone.ExecuteIfBound(Result, ParseError);
+				return;
+			}
+
+			FString Choice;
+			double Confidence = 0.0;
+			if (!FJevParser::ExtractChoice(Json.ToSharedRef(), Choice, Confidence))
+			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Choose parser failure: invalid choice response"));
+				OnDone.ExecuteIfBound(Result, TEXT("Response contained no valid TypeSafe choice"));
+				return;
+			}
+
+			const int32 SelectedIndex = Options.IndexOfByKey(Choice);
+			if (SelectedIndex == INDEX_NONE)
+			{
+				UE_LOG(LogJev, Warning, TEXT("[Jev] Choose response did not select a supplied option: %s"), *Choice);
+				OnDone.ExecuteIfBound(Result, TEXT("Jev did not select one of the supplied options"));
+				return;
+			}
+
+			Result.SelectedOption = Options[SelectedIndex];
+			Result.SelectedIndex = SelectedIndex;
+			Result.Confidence = static_cast<float>(Confidence);
+
+			if (bDebug)
+			{
+				UE_LOG(LogJev, Log, TEXT("[Jev] Choose: %s | Confidence: %.3f | Latency: %.0f ms"), *Result.SelectedOption, Confidence, Raw.LatencyMs);
+			}
+
+			OnDone.ExecuteIfBound(Result, FString());
+		}));
+
+	if (!Request.IsValid())
+	{
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] No active Choose request to track"));
+		return;
+	}
+
+	ActiveRequests.Add(Request);
+	UE_LOG(LogJev, Verbose, TEXT("[Jev] ActiveRequests add (%d active)"), ActiveRequests.Num());
+}
+
 void UJevSubsystem::RequestGeneric(const FString& State, const FString& RawQuestionsJson, const FString& ModelOverride, const FString& EndpointOverride, const FJevRequestResultDelegate& OnDone)
 {
 	const UJevSettings* Settings = UJevSettings::Get();

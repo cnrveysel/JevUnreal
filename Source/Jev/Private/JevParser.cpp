@@ -68,6 +68,38 @@ bool FJevParser::ExtractYesProbability(const TSharedRef<FJsonObject>& Root, doub
 	return FindFirstNoul(RootValue, OutYesProbability);
 }
 
+static const TSharedPtr<FJsonValue>* FindCaseInsensitive(const TSharedRef<FJsonObject>& Object, const FString& Key)
+{
+	const TSharedPtr<FJsonValue>* Found = Object->Values.Find(Key);
+	if (Found)
+	{
+		return Found;
+	}
+
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
+	{
+		if (Pair.Key.Equals(Key, ESearchCase::IgnoreCase))
+		{
+			return &Pair.Value;
+		}
+	}
+	return nullptr;
+}
+
+bool FJevParser::ExtractChoice(const TSharedRef<FJsonObject>& Root, FString& OutChoice, double& OutConfidence)
+{
+	const TSharedPtr<FJsonValue>* ChoiceValue = FindCaseInsensitive(Root, TEXT("choice"));
+	const TSharedPtr<FJsonValue>* ConfidenceValue = FindCaseInsensitive(Root, TEXT("confidence"));
+	if (!ChoiceValue || !ChoiceValue->IsValid() || !ConfidenceValue || !ConfidenceValue->IsValid())
+	{
+		return false;
+	}
+
+	OutChoice = (*ChoiceValue)->AsString();
+	OutConfidence = (*ConfidenceValue)->AsNumber();
+	return !OutChoice.IsEmpty() && FJevParser::IsValidProbability(OutConfidence);
+}
+
 TSharedPtr<FJsonObject> FJevParser::ParseJson(const FString& JsonText, FString& OutParseError)
 {
 	if (JsonText.TrimStartAndEnd().IsEmpty())

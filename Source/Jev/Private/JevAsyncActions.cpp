@@ -64,6 +64,66 @@ void UAsyncActionJevYesNo::HandleResult(FJevDecisionResult Result, const FString
 	SetReadyToDestroy();
 }
 
+UAsyncActionJevChoose* UAsyncActionJevChoose::JevChoose(UObject* WorldContextObject, const FString& State, const FString& Question, const TArray<FString>& Options, float TimeoutSeconds, const FString& EndpointOverride)
+{
+	UAsyncActionJevChoose* Action = NewObject<UAsyncActionJevChoose>();
+	Action->WorldContext = WorldContextObject;
+	Action->State = State;
+	Action->Question = Question;
+	Action->Options = Options;
+	Action->TimeoutSeconds = TimeoutSeconds;
+	Action->EndpointOverride = EndpointOverride;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+void UAsyncActionJevChoose::Activate()
+{
+	UE_LOG(LogJev, Verbose, TEXT("[Jev] Choose node activated"));
+	UJevSubsystem* Subsystem = nullptr;
+	if (UObject* Context = WorldContext.Get())
+	{
+		if (UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(Context, EGetWorldErrorMode::ReturnNull) : nullptr)
+		{
+			Subsystem = World->GetGameInstance()->GetSubsystem<UJevSubsystem>();
+		}
+	}
+
+	if (!Subsystem)
+	{
+		UE_LOG(LogJev, Warning, TEXT("[Jev] No valid world context for Choose request"));
+		OnError.Broadcast(TEXT("Jev requires a valid world context"));
+		SetReadyToDestroy();
+		return;
+	}
+
+	FJevChooseResultDelegate OnDone;
+	OnDone.BindUObject(this, &UAsyncActionJevChoose::HandleResult);
+	Subsystem->RequestChoose(State, Question, Options, TimeoutSeconds, OnDone, EndpointOverride);
+}
+
+void UAsyncActionJevChoose::HandleResult(FJevChooseResult Result, const FString& Error)
+{
+	if (bHasCompleted)
+	{
+		UE_LOG(LogJev, Warning, TEXT("[Jev] Ignoring duplicate Choose completion"));
+		return;
+	}
+	bHasCompleted = true;
+
+	if (!Error.IsEmpty())
+	{
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] Broadcasting Choose Blueprint error"));
+		OnError.Broadcast(Error);
+	}
+	else
+	{
+		UE_LOG(LogJev, Verbose, TEXT("[Jev] Broadcasting Choose Blueprint success"));
+		OnSuccess.Broadcast(Result);
+	}
+	SetReadyToDestroy();
+}
+
 UAsyncActionJevRequest* UAsyncActionJevRequest::JevRequest(UObject* WorldContextObject, const FString& State, const FString& RawQuestionsJson, const FString& ModelOverride, const FString& EndpointOverride)
 {
 	UAsyncActionJevRequest* Action = NewObject<UAsyncActionJevRequest>();

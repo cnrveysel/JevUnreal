@@ -1,6 +1,6 @@
 # Jev for Unreal Engine
 
-Use **Jev decisions** directly from Unreal Engine Blueprints. This is the v0.1 release, tested with Unreal Engine 5.8, including a manual Play In Editor request to the real TypeSafe API.
+Use **Jev decisions** directly from Unreal Engine Blueprints. This is the v0.2 code preview. The v0.1 release was tested with Unreal Engine 5.8, including a manual Play In Editor request to the real TypeSafe API.
 
 ```
 State  →  Jev  →  Decision  →  Blueprint
@@ -29,6 +29,7 @@ Combine it freely with Behavior Trees, State Trees, EQS, or anything else — Je
 ## Features
 
 - **Jev Yes / No** async Blueprint node: State + Question → YES/NO, Yes probability, confidence, raw response, latency
+- **Jev Choose** async Blueprint node: State + Question + Options → one supplied option, selected index, confidence, raw response, latency
 - **Make Jev Request** advanced async node: send raw Questions JSON, get the raw Jev response
 - Fully asynchronous via Unreal's HTTP module — no game-thread blocking
 - Project Settings → Plugins → Jev configuration (endpoint, model, API key, timeout, debug logging, proxy)
@@ -140,7 +141,7 @@ The plugin then sends requests to your backend with no Authorization header; you
 ## Architecture
 
 ```
-Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevRequest)
+Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevChoose / UAsyncActionJevRequest)
   → UJevSubsystem (game instance subsystem, request lifetime)
     → FJevHttpClient (Unreal HTTP module, async POST + JSON)
       → TypeSafe / proxy endpoint
@@ -159,14 +160,14 @@ Blueprint async node (UAsyncActionJevYesNo / UAsyncActionJevRequest)
 
 ## Current limitations
 
-- **Jev Choose** (options array → selected option/index) is a future feature. It will be added once its response schema is verified against the TypeSafe API; we do not fake unverified formats.
 - No retry logic — a failed or timed-out request surfaces as an error to your Blueprint.
 - The API key travels through your process in plaintext config; production use requires a proxy.
 - Rate limits, billing, and upstream schema changes are your responsibility to handle (the node reports HTTP status and errors).
 
 ## Roadmap
 
-- [ ] `Jev Choose` node once the choice response schema is verified
+- [x] `Jev Choose` node using the verified native `choice` response schema
+- [ ] `Jev Choose` compile and live-endpoint verification
 - [ ] Request batching helpers
 - [ ] Sample project / demo map
 
